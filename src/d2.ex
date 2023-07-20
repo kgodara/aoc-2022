@@ -1,11 +1,17 @@
 
 defmodule RPS do
 
+  # scores
+
   @lose 0
   @draw 3
   @win 6
+
+  @r 1
+  @p 2
+  @s 3
   
-  def rps_p1(line, accum_score) do
+  def p1(line, accum_score) do
 
     moves = String.split(line)
 
@@ -21,9 +27,9 @@ defmodule RPS do
     )
 
     score = case Enum.at(moves, 1) do
-      :r -> 1
-      :p -> 2
-      :s -> 3
+      :r -> @r
+      :p -> @p
+      :s -> @s
     end
 
     accum_score + score + case moves do
@@ -42,7 +48,7 @@ defmodule RPS do
   end
 
 
-  def rps_p2(line, accum_score) do
+  def p2(line, accum_score) do
 
     vals = String.split(line)
 
@@ -52,29 +58,27 @@ defmodule RPS do
       "Z" -> :w
     end
 
-    opp_move = case Enum.at(vals, 0) do
-      "A" -> :r
-      "B" -> :p
-      "C" -> :s
+    {opp_move, opp_move_score} = case Enum.at(vals, 0) do
+      "A" -> {:r, @r}
+      "B" -> {:p, @p}
+      "C" -> {:s, @s}
     end
 
-    move_scores = %{:r => 1, :p => 2, :s => 3}
-
     loses_to = %{
-      :r => move_scores[:p],
-      :p => move_scores[:s],
-      :s => move_scores[:r],
+      :r => @p,
+      :p => @s,
+      :s => @r,
     }
 
     beats = %{
-      :r => move_scores[:s],
-      :p => move_scores[:r],
-      :s => move_scores[:p],
+      :r => @s,
+      :p => @r,
+      :s => @p,
     }
 
     accum_score + case outcome do
       :l -> @lose + beats[opp_move]
-      :d -> @draw + move_scores[opp_move]
+      :d -> @draw + opp_move_score
       :w -> @win + loses_to[opp_move]
     end
   end
@@ -86,8 +90,8 @@ input = File.read!("../input/d2.txt")
 
 lines = String.split(input, "\n")
 
-p1_score = Enum.reduce(lines, 0, &RPS.rps_p1/2)
-p2_score = Enum.reduce(lines, 0, &RPS.rps_p2/2)
+p1_score = Enum.reduce(lines, 0, &RPS.p1/2)
+p2_score = Enum.reduce(lines, 0, &RPS.p2/2)
 
 IO.puts("Part 1: #{p1_score}")
 IO.puts("Part 2: #{p2_score}")
