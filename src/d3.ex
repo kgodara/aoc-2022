@@ -26,7 +26,6 @@ defmodule Rucksack do
       MapSet.to_list |>
       Enum.at(0) |>
       Kernel.+(accum)
-
   end
 
 
@@ -55,9 +54,6 @@ defmodule Rucksack do
       Kernel.+(accum)
 
   end
-
-
-
 end
 
 

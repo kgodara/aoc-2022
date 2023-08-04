@@ -28,7 +28,6 @@ defmodule Cleanup do
 
     accum + enclosing_found?
   end
-
 end
 
 
