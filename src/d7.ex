@@ -1,6 +1,7 @@
 
 defmodule Entry do
-  defstruct name: "", type: nil, size: 0, children: []
+  @enforce_keys [:name, :type]
+  defstruct [:name, :type, :size, children: []]
 end
 
 # NOTE: directory names are not unique, assume files names are not either
@@ -112,13 +113,11 @@ defmodule SpaceManager do
       Enum.map(& elem(&1, 0))
 
     SpaceManager.fill_dir_sizes(dir_by_depth, entry_lookup)
-
   end
 
   def find_to_delete(entry_lookup, total_space, needed_free_space) do
   
-    used_space = entry_lookup |> Map.get("/")
-    used_space = used_space.size
+    used_space = entry_lookup |> Map.get("/") |> Map.get(:size)
 
     available_space = total_space - used_space
     space_to_make = needed_free_space - available_space
@@ -128,7 +127,6 @@ defmodule SpaceManager do
     Enum.filter(& &1.type == :dir) |>
     Enum.filter(& &1.size >= space_to_make) |>
     Enum.reduce(700000001, & min(&1.size, &2))
-
   end
 end
 
@@ -137,8 +135,8 @@ defmodule Main do
   def main() do
     lines = File.read!("../input/d7.txt") |> String.split("\n")
 
-    entry_lookup = SpaceManager.parse_layout(lines, [], %{"/" => %Entry{name: "/", type: :dir, size: 0, children: []}})
-    entry_lookup = SpaceManager.fill_dir_sizes(entry_lookup)
+    entry_lookup = SpaceManager.parse_layout(lines, [], %{"/" => %Entry{name: "/", type: :dir, size: 0, children: []}}) |>
+      SpaceManager.fill_dir_sizes
 
     p1_size = 
         entry_lookup |>
