@@ -1,60 +1,93 @@
 
 defmodule Rope do
 
-  def exec_move_p1({dir, steps},{{hx, hy}, {tx, ty}}, uniq_pos) do
 
+  def move_head({hx, hy}, dir) do
     additive_move? = dir in ["U", "R"]
     vert_move? = dir in ["U", "D"]
 
-    uniq_pos = MapSet.put(uniq_pos, {tx, ty})
-
-    Enum.reduce(1..steps, {{hx, hy}, {tx, ty}, uniq_pos}, fn _, {{hx, hy}, {tx, ty}, t_pos_set} ->
-      # move the head
-      {hx, hy} = case {vert_move?, additive_move?} do
+    case {vert_move?, additive_move?} do
         {true, true} -> {hx, hy+1}
         {true, false} -> {hx, hy-1}
         {false, true} -> {hx+1, hy}
         {false, false} -> {hx-1, hy}
-      end
-
-      nonadjacent? = case {abs(hx - tx), abs(hy - ty)} do
-        {dx, dy} when dx > 1 or dy > 1 -> true
-        _ -> false
-      end
-
-      diag_step? = case {abs(hx - tx), abs(hy - ty)} do
-        {dx, dy} when (dx > 0 and dy > 0) and (dx > 1 or dy > 1) -> true
-        _ -> false
-      end
-
-      {tx, ty} = case {nonadjacent?, diag_step?} do
-        {_, true} ->
-          case {hx - tx, hy - ty} do
-            {dx, dy} when dx > 0 and dy > 0 -> {tx + 1, ty + 1}
-            {dx, dy} when dx > 0 and dy < 0 -> {tx + 1, ty - 1}
-            {dx, dy} when dx < 0 and dy > 0 -> {tx - 1, ty + 1}
-            {dx, dy} when dx < 0 and dy < 0 -> {tx - 1, ty - 1}
-          end
-        {true, false} -> {tx + div(hx - tx,2), ty + div(hy - ty,2)}
-        _ -> {tx, ty}
-
-      end
-
-      {{hx, hy}, {tx, ty}, t_pos_set |> MapSet.put({tx, ty})}
-
-    end)
+    end
   end
 
+
+  def move_tail({tx, ty}, {hx, hy}) do
+
+    # are head and tail nonadjacent (tail has to move)?
+    nonadjacent? = case {abs(hx - tx), abs(hy - ty)} do
+      {dx, dy} when dx > 1 or dy > 1 -> true
+      _ -> false
+    end
+
+    # will the tail's move be diagonal?
+    diag_step? = case {abs(hx - tx), abs(hy - ty)} do
+      {dx, dy} when (dx > 0 and dy > 0) and (dx > 1 or dy > 1) -> true
+      _ -> false
+    end
+
+    # moved tail coords
+    case {nonadjacent?, diag_step?} do
+
+      # diagonal moves are all [+/- 1, +/- 1]
+      {_, true} ->
+        case {hx - tx, hy - ty} do
+          {dx, dy} when dx > 0 and dy > 0 -> {tx + 1, ty + 1}
+          {dx, dy} when dx > 0 and dy < 0 -> {tx + 1, ty - 1}
+          {dx, dy} when dx < 0 and dy > 0 -> {tx - 1, ty + 1}
+          {dx, dy} when dx < 0 and dy < 0 -> {tx - 1, ty - 1}
+        end
+
+      # non-diagonal moves will always involve tail having a 
+      # manhattan dist of 2 (in a straight line) from head,
+      # so can use div 2 to correctly increment/decrement coords 
+      {true, false} -> {tx + div(hx - tx,2), ty + div(hy - ty,2)}
+      _ -> {tx, ty}
+    end
+  end
+
+
+  def exec_move({_, steps}, {node_list, uniq_pos}) when steps == 0 do
+    {node_list, uniq_pos}
+  end
+
+
+  def exec_move({dir, steps}, {node_list, uniq_pos}) do
+
+    # update the head element manually
+    moved_head = node_list |>
+      List.first |>
+      Rope.move_head(dir)
+
+    # update each non-head (tail) element by one step,
+    # using prior (already moved) element
+    moved_nodes = Enum.reduce(Enum.drop(node_list,1), [moved_head],
+        & [Rope.move_tail(&1, List.first &2)] ++ &2) |>
+    Enum.reverse
+
+    # Only add the last tail node's position to MapSet 
+    Rope.exec_move({dir, steps-1}, {moved_nodes, MapSet.put(uniq_pos, List.last moved_nodes )})
+  end
 end
 
 
 lines = File.read!("../input/d9.txt") |> String.trim_trailing |> String.split("\n")
 
-tail_positions = lines |>
-  Enum.map(fn i -> i |> String.split(" ") end) |>
-  Enum.map(fn [dir, steps] -> {dir, String.to_integer(steps)} end) |>
-  Enum.reduce({{0,0}, {0,0}, MapSet.new([{0,0}])}, fn move_args, {h, t, t_pos} -> Rope.exec_move_p1(move_args, {h, t}, t_pos) end)
+parsed_move_cmds = lines |>
+  Enum.map(& String.split(&1, " ")) |>
+  Enum.map(& {List.first(&1), String.to_integer(List.last(&1))})
 
-IO.puts(elem(tail_positions, 2) |> MapSet.size)
+origin = {0,0}
+pos_set = MapSet.new([origin])
 
+[{_, tail_pos1}, {_, tail_pos2}] = Enum.map([2,10], 
+  fn n -> Enum.reduce(parsed_move_cmds, {List.duplicate(origin, n), pos_set}, & Rope.exec_move(&1, &2)) end
+)
+
+
+IO.puts("Part 1: #{MapSet.size tail_pos1}")
+IO.puts("Part 2: #{MapSet.size tail_pos2}")
 
