@@ -7,6 +7,9 @@ end
 # NOTE: directory names are not unique, assume files names are not either
 defmodule SpaceManager do
 
+  @total_space 70_000_000
+  @needed_free_space 30_000_000
+
 
   def parse_layout([], _, entry_lookup) do
     entry_lookup
@@ -43,8 +46,8 @@ defmodule SpaceManager do
         [file_size, file_name] = String.split(cur_cmd, " ")
         full_file_name = cwd_path <> "/" <> file_name
 
+        entry_lookup |>
         Map.put(
-          entry_lookup,
           full_file_name,
           %Entry{
             name: full_file_name,
@@ -61,8 +64,8 @@ defmodule SpaceManager do
         [_, dir_name] = String.split(cur_cmd, " ")
         full_dir_name = cwd_path <> "/" <> dir_name
 
+        entry_lookup |>
         Map.put(
-          entry_lookup,
           full_dir_name,
           %Entry{
             name: full_dir_name,
@@ -87,7 +90,7 @@ defmodule SpaceManager do
   def fill_dir_sizes([dir_entry | tail], entry_lookup) do
 
     dir_size = dir_entry.children |>
-      Enum.map(& Map.get(entry_lookup, &1).size ) |>
+      Enum.map(& entry_lookup[&1].size ) |>
       Enum.reduce(& &1 + &2)
 
     SpaceManager.fill_dir_sizes(
@@ -115,18 +118,18 @@ defmodule SpaceManager do
     SpaceManager.fill_dir_sizes(dir_by_depth, entry_lookup)
   end
 
-  def find_to_delete(entry_lookup, total_space, needed_free_space) do
+  def find_to_delete(entry_lookup) do
   
     used_space = entry_lookup |> Map.get("/") |> Map.get(:size)
 
-    available_space = total_space - used_space
-    space_to_make = needed_free_space - available_space
+    unused_space = @total_space - used_space
+    space_to_make = @needed_free_space - unused_space
 
     entry_lookup |>
     Map.values |>
     Enum.filter(& &1.type == :dir) |>
     Enum.filter(& &1.size >= space_to_make) |>
-    Enum.reduce(700000001, & min(&1.size, &2))
+    Enum.reduce(@total_space + 1, & min(&1.size, &2))
   end
 end
 
@@ -142,10 +145,10 @@ defmodule Main do
         entry_lookup |>
         Map.values |>
         Enum.filter(& &1.type == :dir) |>
-        Enum.filter(& &1.size <= 100000) |>
+        Enum.filter(& &1.size <= 100_000) |>
         Enum.reduce(0, & &1.size + &2)
 
-    p2_to_delete = SpaceManager.find_to_delete(entry_lookup, 70000000, 30000000)
+    p2_to_delete = entry_lookup |> SpaceManager.find_to_delete
 
     IO.puts("Part 1: #{p1_size}")
     IO.puts("Part 2: #{p2_to_delete}")

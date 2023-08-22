@@ -1,6 +1,5 @@
 defmodule Stacks do
 
-
   def update_stacks_from_line("", stacks, _stack_idx) do
     stacks
   end

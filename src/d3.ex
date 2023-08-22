@@ -1,17 +1,23 @@
 defmodule Rucksack do
+
+  # Transform characters:
+  # A-Z --> [65,90] --> [27,52]
+  # a-z --> [97,122] --> [1,26]
+  def charlist_remap(data) do
+    data |>
+    Enum.map(&
+      if &1 >= 97 do
+        &1 - 96
+      else
+        &1 - 38
+      end
+    )
+  end
+
+
   def p1(line, accum) do
 
-    # Transform characters:
-    # A-Z --> [65,90] --> [27,52]
-    # a-z --> [97,122] --> [1,26]
-    ch_list = String.to_charlist(line) |>
-      Enum.map(fn ch -> 
-          if ch >= 97 do
-            ch - 96
-          else
-            ch - 38
-          end
-        end)
+    ch_list = line |> String.to_charlist |> Rucksack.charlist_remap
 
     # Get left and right halves as sets
     [left, right] = 
@@ -31,19 +37,9 @@ defmodule Rucksack do
 
   def p2(line_triplet, accum) do
 
-    # Transform characters for line_triplet - [[..], [..], [..]]:
-    # A-Z --> [65,90] --> [27,52]
-    # a-z --> [97,122] --> [1,26]
-    ch_list = Enum.map(line_triplet, &String.to_charlist/1) |>
-      Enum.map(
-        &Enum.map(&1, fn ch -> 
-          if ch >= 97 do
-            ch - 96
-          else
-            ch - 38
-          end
-        end)
-      )
+    ch_list = line_triplet |>
+      Enum.map(&String.to_charlist/1) |>
+      Enum.map(&Rucksack.charlist_remap(&1))
 
     # get common element among list triplet [[..], [..], [..]]
     # + accumulated score

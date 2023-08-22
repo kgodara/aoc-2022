@@ -79,7 +79,7 @@ defmodule Tree do
 
     [num_on_left, num_on_right, num_above, num_below] = [col_idx, col_num - (col_idx+1), row_idx, num_rows - (row_idx+1)]
 
-    # define anon funcs to get trees to four edges
+    # define anon funcs to get trees in path to each of four edges
     # using grid as arg so that can use
     # capture operator instead of "fn _ -> .. end"
 

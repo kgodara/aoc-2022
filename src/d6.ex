@@ -1,5 +1,6 @@
 defmodule PacketParser do
 
+
   def validate_next(window, packet_size, buffer, pos_idx) when length(window) == packet_size and length(buffer) > 0 do
  
     is_start_packet? = window |> Enum.uniq |> length |> Kernel.==(packet_size)
@@ -15,6 +16,7 @@ defmodule PacketParser do
       pos_idx
     end
   end
+
 end
 
 buffer = File.read!("../input/d6.txt") |> String.to_charlist
