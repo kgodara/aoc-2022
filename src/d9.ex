@@ -34,12 +34,15 @@ defmodule Rope do
 
       # diagonal moves are all [+/- 1, +/- 1]
       {_, true} ->
-        case {hx - tx, hy - ty} do
-          {dx, dy} when dx > 0 and dy > 0 -> {tx + 1, ty + 1}
-          {dx, dy} when dx > 0 and dy < 0 -> {tx + 1, ty - 1}
-          {dx, dy} when dx < 0 and dy > 0 -> {tx - 1, ty + 1}
-          {dx, dy} when dx < 0 and dy < 0 -> {tx - 1, ty - 1}
-        end
+        # sign function for dx, dy (positive -> 1, negative -> -1)
+        # NOTE: 'case' statement is more legible, sign function is here FOR FUN
+        dx = hx-tx
+        dx = div(dx, max(1, abs(dx)))
+
+        dy = hy-ty
+        dy = div(dy, max(1, abs(dy)))
+
+        {tx + dx, ty + dy}
 
       # non-diagonal moves will always involve tail having a 
       # manhattan dist of 2 (in a straight line) from head,
@@ -78,7 +81,7 @@ lines = File.read!("../input/d9.txt") |> String.trim_trailing |> String.split("\
 
 parsed_move_cmds = lines |>
   Enum.map(& String.split(&1, " ")) |>
-  Enum.map(& {List.first(&1), String.to_integer(List.last(&1))})
+  Enum.map(& {List.first(&1), &1 |> List.last |> String.to_integer})
 
 origin = {0,0}
 pos_set = MapSet.new([origin])
