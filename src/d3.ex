@@ -30,7 +30,7 @@ defmodule Rucksack do
     # return common element across halves + accumulated score
     MapSet.intersection(left, right) |>
       MapSet.to_list |>
-      Enum.at(0) |>
+      List.first |>
       Kernel.+(accum)
   end
 
@@ -46,7 +46,7 @@ defmodule Rucksack do
     Enum.map(ch_list, &MapSet.new/1) |>
       Enum.reduce(fn set, intersect -> MapSet.intersection(set, intersect) end) |>
       MapSet.to_list |>
-      Enum.at(0) |>
+      List.first |>
       Kernel.+(accum)
 
   end
