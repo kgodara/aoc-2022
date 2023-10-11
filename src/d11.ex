@@ -224,5 +224,5 @@ m_lookup_nonscalar = KeepAway.items_to_mod_list(monkey_lookup)
 
 
 IO.puts("Part 1: #{p1_res}")
-IO.puts("Part 1: #{p2_res}")
+IO.puts("Part 2: #{p2_res}")
 
