@@ -83,37 +83,89 @@ defmodule ValveNetwork do
     end
   end
 
+  # Question: Is it possible to say that any seq that ends at the same point
+  # and is worse than another in terms of rem_time AND score should be discarded?
+  # (<= rem_time && <= score)
+
+  # That should be a tighter bound than comparing sequences with all of the same members
+
   # Goal: traverse from s to all other nodes in all permutations
   # Can do DFS with min() to coalesce
-  def traverse_all_permutations(flow_graph, dists, cur, closed_valves, score, rem_time) when length(closed_valves) == 0 or rem_time == 0 do
-    score
+  def traverse_all_permutations(flow_graph, dists, cur, closed_valves, score, rem_time, limits) when rem_time == 0 or length(closed_valves) == 0 do
+    # if rem(limits["c"], 1_000_000) == 0, do: IO.write("#{limits["c"]}\n")
+    {score, Map.update!(limits, "c", & &1 + 1)}
   end
 
-  def traverse_all_permutations(flow_graph, dists, cur, closed_valves, score, rem_time) do
+  def traverse_all_permutations(flow_graph, dists, cur, closed_valves, score, rem_time, limits) do
+
+    # Problem: an id in 'closed_valves' == cur
 
     closed_valves_set = MapSet.new(closed_valves)
 
     closed_valves |>
-    Enum.reduce(0, fn id, final_score ->
+    Enum.reduce({0, limits}, fn id, {final_score, limits} ->
       # - 1 here for the tick used to open 'id' valve
+      #IO.inspect(closed_valves, label: "closed_valves")
+      #IO.inspect({cur, id}, label: "{cur, id}")
+      #if id == cur do
+      #  IO.inspect({score, rem_time}, label: "{score, rem_time}")
+      #  IO.inspect(cur, label: "cur")
+      #  IO.inspect(closed_valves, label: "closed_valves")
+      #  IO.inspect(limits, label: "limits")
+      #end
       n_time = rem_time - dists[cur][id] - 1
-      #IO.write("Opening Valve #{flow_graph[id].label} with State {score, rem_time}")
-      #IO.inspect({score, rem_time})
-      #IO.write("\n")
-      max(
-        final_score,
-        # activate 'id' valve
-        ValveNetwork.traverse_all_permutations(
+
+      # flow available on all ticks after opening
+      n_score = score + (flow_graph[id].flow * n_time)
+
+      # remove activated valve from closed_valves
+      # n_closed = MapSet.delete(closed_valves, id)
+
+      {pursue?, n_limits} =
+        # We haven't been to this line yet
+        if not Map.has_key?(limits, id) do
+          {true, Map.put(limits, id, {n_time, n_score})}
+        else
+          {o_time, o_score} = Map.get(limits, id)
+          #IO.inspect([{o_time, o_score}, {n_time, n_score}], label: "cmp")
+
+          # we should pursue this seq if SOMETHING is better than last time we were at this node
+          if (n_time > o_time or n_score > o_score) do
+            # we should update this node's limit if both params are <= to prev
+            # This means that time can only monotonically increase which seems bad
+            # But, why are there actual correctness problems?
+            if n_time >= o_time and n_score >= o_score do
+              IO.inspect(limits, label: "limits")
+              {true, Map.put(limits, id, {n_time, n_score})}
+            else
+              {true, limits}
+            end
+          else
+            {false, limits}
+          end
+        end
+
+      #IO.inspect({pursue?, id}, label: "get_update results")
+      # IO.write()
+      if pursue? == true and n_time >= 0 do
+
+        #if n_time < 2 do
+        #  IO.inspect(MapSet.delete(closed_valves, id), label: "n_closed")
+        #end
+
+        {s, l} = ValveNetwork.traverse_all_permutations(
           flow_graph,
           dists,
           id,
-          # remove activated valve from closed_valves
           MapSet.delete(closed_valves_set, id) |> MapSet.to_list,
-          # flow available on all ticks after opening
-          score + (flow_graph[id].flow * n_time),
-          n_time
+          n_score,
+          n_time,
+          n_limits
         )
-      )
+        {max(final_score, s), l}
+      else
+        {final_score, limits}
+      end
     end)
   end
 
@@ -161,24 +213,28 @@ defmodule Main do
 
 
     #IO.inspect(valve_lookup, label: "valve_lookup")
-    #IO.inspect(dists, label: "dists")
+    IO.inspect(dists, label: "dists")
 
     flow_network = ValveNetwork.gen_flow_network(valve_lookup)
 
     #IO.inspect(flow_network, label: "flow_network")
 
 
-    x = ValveNetwork.traverse_all_permutations(flow_network,
-      dists,
-      # TODO: Fix this
+    s_closed = flow_network |> Map.values |> Enum.map(& &1.id) |> Enum.filter(& &1 != start_node_id)
 
+    IO.inspect(flow_network, label: "flow_network")
+
+    x = ValveNetwork.traverse_all_permutations(
+      flow_network,
+      dists,
       flow_network[start_node_id].id,
-      flow_network |> Map.values |> Enum.map(& &1.id) |> Enum.filter(& &1 != 0),
+      s_closed,
       0,
-      30
+      30,
+      %{"c" => 0}
     )
 
-    IO.inspect(x)
+    IO.inspect(elem(x, 0))
 
 
 
