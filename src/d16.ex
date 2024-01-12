@@ -2,10 +2,11 @@ defmodule Valve do
   defstruct [:id, :label, :flow, :adj_labels, :adj_ids]
 end
 
-
 defmodule ValveNetwork do
   def parse(lines) do
     # NOTE: 'valves' can be singular
+
+    # Example:
     # Valve AA has flow rate=0; tunnels lead to valves DD, II, BB
 
     # lookup valve by id
@@ -32,13 +33,13 @@ defmodule ValveNetwork do
 
     # adj matrix using ids
     adj_matrix = valve_lookup |>
-    Map.values |>
-    Enum.reduce(%{}, fn v, lookup ->
-      adj_ids =
-        v.adj_labels |>
-        Enum.map(& Map.get(label_id_lookup, &1))
-      Map.put(lookup, v.id, adj_ids)
-    end)
+      Map.values |>
+      Enum.reduce(%{}, fn v, lookup ->
+        adj_ids =
+          v.adj_labels |>
+          Enum.map(& Map.get(label_id_lookup, &1))
+        Map.put(lookup, v.id, adj_ids)
+      end)
 
     valve_lookup =
       valve_lookup |>
@@ -51,6 +52,8 @@ defmodule ValveNetwork do
 
   end
 
+  # BFS is used to get a distance matrix so we can prune all valves with 0 flow
+  # and only consider the starting valve and valves with non-zero flows
   def bfs(graph, s) do
     bfs(%{}, graph, graph[s.id].adj_ids, [], 1) |>
     Map.delete(s.id)
@@ -83,88 +86,62 @@ defmodule ValveNetwork do
     end
   end
 
-  # Question: Is it possible to say that any seq that ends at the same point
-  # and is worse than another in terms of rem_time AND score should be discarded?
-  # (<= rem_time && <= score)
-
-  # That should be a tighter bound than comparing sequences with all of the same members
-
-  # Goal: traverse from s to all other nodes in all permutations
-  # Can do DFS with min() to coalesce
-  def traverse_all_permutations(flow_graph, dists, cur, closed_valves, score, rem_time, limits) when rem_time == 0 or length(closed_valves) == 0 do
-    # if rem(limits["c"], 1_000_000) == 0, do: IO.write("#{limits["c"]}\n")
-    {score, Map.update!(limits, "c", & &1 + 1)}
+  def permute_pruned(_, _, closed_valves, score, rem_time, limits) when rem_time == 0 or length(closed_valves) == 0 do
+    {score, limits}
   end
 
-  def traverse_all_permutations(flow_graph, dists, cur, closed_valves, score, rem_time, limits) do
+  # permute across all possibilities with pruning
+  # limit_key is pruning mechanism, need to prune by:
+  #   position in network
+  #   opened_valves (useful for part 2)
+  #   time remaining
+  # returns: {max val for single agent, limits (best scores for all encountered 'limit_key')}
+  def permute_pruned({flow_graph, dists}, cur, closed_valves, score, rem_time, limits) do
 
     # Problem: an id in 'closed_valves' == cur
-
     closed_valves_set = MapSet.new(closed_valves)
 
     closed_valves |>
-    Enum.reduce({0, limits}, fn id, {final_score, limits} ->
-      # - 1 here for the tick used to open 'id' valve
-      #IO.inspect(closed_valves, label: "closed_valves")
-      #IO.inspect({cur, id}, label: "{cur, id}")
-      #if id == cur do
-      #  IO.inspect({score, rem_time}, label: "{score, rem_time}")
-      #  IO.inspect(cur, label: "cur")
-      #  IO.inspect(closed_valves, label: "closed_valves")
-      #  IO.inspect(limits, label: "limits")
-      #end
-      n_time = rem_time - dists[cur][id] - 1
+    Enum.reduce({score, limits}, fn dst, {final_score, limits_acc} ->
+      # - 1 here for the tick used to open 'dst' valve
+      n_time = rem_time - dists[cur][dst] - 1
 
       # flow available on all ticks after opening
-      n_score = score + (flow_graph[id].flow * n_time)
+      n_score = score + (flow_graph[dst].flow * n_time)
 
-      # remove activated valve from closed_valves
-      # n_closed = MapSet.delete(closed_valves, id)
+      # are opening valve 'dst' in this iter so remove from closed_valves_set
+      closed_valves_set = MapSet.delete(closed_valves_set, dst)
+      open =
+        flow_graph |>
+        Map.values |>
+        Enum.map(& &1.id) |>
+        Enum.filter(& not MapSet.member?(closed_valves_set,&1))
 
-      {pursue?, n_limits} =
-        # We haven't been to this line yet
-        if not Map.has_key?(limits, id) do
-          {true, Map.put(limits, id, {n_time, n_score})}
+      limit_key = {dst, open, n_time}
+      limit_key_exists? = Map.has_key?(limits_acc, limit_key)
+
+      n_limits =
+        if not limit_key_exists? or n_score > Map.get(limits_acc, limit_key) do
+          Map.put(limits_acc, limit_key, n_score)
         else
-          {o_time, o_score} = Map.get(limits, id)
-          #IO.inspect([{o_time, o_score}, {n_time, n_score}], label: "cmp")
-
-          # we should pursue this seq if SOMETHING is better than last time we were at this node
-          if (n_time > o_time or n_score > o_score) do
-            # we should update this node's limit if both params are <= to prev
-            # This means that time can only monotonically increase which seems bad
-            # But, why are there actual correctness problems?
-            if n_time >= o_time and n_score >= o_score do
-              IO.inspect(limits, label: "limits")
-              {true, Map.put(limits, id, {n_time, n_score})}
-            else
-              {true, limits}
-            end
-          else
-            {false, limits}
-          end
+          limits_acc
         end
 
-      #IO.inspect({pursue?, id}, label: "get_update results")
-      # IO.write()
+      pursue? = not limit_key_exists? or Map.get(limits_acc, limit_key) <= n_score
+
       if pursue? == true and n_time >= 0 do
 
-        #if n_time < 2 do
-        #  IO.inspect(MapSet.delete(closed_valves, id), label: "n_closed")
-        #end
-
-        {s, l} = ValveNetwork.traverse_all_permutations(
-          flow_graph,
-          dists,
-          id,
-          MapSet.delete(closed_valves_set, id) |> MapSet.to_list,
+        {s, l} = ValveNetwork.permute_pruned(
+          {flow_graph, dists},
+          dst,
+          closed_valves_set |> MapSet.to_list,
           n_score,
           n_time,
           n_limits
         )
         {max(final_score, s), l}
       else
-        {final_score, limits}
+        {final_score, limits_acc}
       end
     end)
   end
@@ -172,16 +149,10 @@ defmodule ValveNetwork do
   # Strip out all nodes with 0 flow besides 'AA'
   def gen_flow_network(graph) do
     graph |>
-    Enum.filter(fn {k,v} -> v.flow > 0 or v.label == "AA" end) |>
+    Enum.filter(fn {_,v} -> v.flow > 0 end) |>
     Map.new
   end
 end
-
-# Init approach:
-
-
-# Random thought:
-#   If we do BFS traversal, can
 
 # Thought:
 # Valves with flow rate=0 exist just to add travel cost.
@@ -190,10 +161,6 @@ end
 
 # Is there a way to prune the recursion as we go?
 # Or, is there a fast way to determine when a sequence is non-optimal?
-# If we went to the max available node and back at the very start, we have a hard bound for pruning
-#
-# If any gains made so far are < 2x traversal cost to max node +
-
 
 defmodule Main do
   def main() do
@@ -210,33 +177,64 @@ defmodule Main do
         Map.put(lookup, id, ValveNetwork.bfs(valve_lookup, valve_lookup[id]))
       end)
 
-
-
-    #IO.inspect(valve_lookup, label: "valve_lookup")
-    IO.inspect(dists, label: "dists")
-
     flow_network = ValveNetwork.gen_flow_network(valve_lookup)
 
-    #IO.inspect(flow_network, label: "flow_network")
+
+    # closed valves with nonzero flow
+    closed =
+      flow_network |>
+      Map.values |>
+      Enum.map(& &1.id) |>
+      MapSet.new
 
 
-    s_closed = flow_network |> Map.values |> Enum.map(& &1.id) |> Enum.filter(& &1 != start_node_id)
-
-    IO.inspect(flow_network, label: "flow_network")
-
-    x = ValveNetwork.traverse_all_permutations(
-      flow_network,
-      dists,
-      flow_network[start_node_id].id,
-      s_closed,
-      0,
-      30,
-      %{"c" => 0}
-    )
-
-    IO.inspect(elem(x, 0))
+    [{res_p1, _}, {_, limits}] =
+      [30,26] |>
+      Enum.map(&
+        ValveNetwork.permute_pruned(
+          {flow_network, dists},
+          start_node_id,
+          closed,
+          0,
+          &1,
+          %{}
+        )
+      )
 
 
+    # Get max scores for every subset of nodes selected
+    subset_max_scores = limits |>
+      Enum.map(fn {{_id,open,_time}, score} -> {open,score} end) |>
+      Enum.reduce(%{}, fn {open, score},acc ->
+        if not Map.has_key?(acc, open) do
+          Map.put(acc, open, score)
+        else
+          Map.put(acc, open, max(acc[open], score))
+        end
+      end)
+
+    # Find best results for 2 agents by finding
+    # the maximum possible score as a sum of 2 disjoint paths
+    # over all subsets (assoc with their max scores)
+    res_p2 =
+      subset_max_scores |>
+      Enum.reduce(0, fn {subset, score}, max_score ->
+        set1 = subset |> MapSet.new
+
+        subset_max_scores |>
+        Map.delete(subset) |>
+        Enum.reduce(max_score, fn {subset2, score2}, score_acc ->
+          set2 = subset2 |> MapSet.new
+          if MapSet.disjoint?(set1, set2) do
+            max(score_acc, score+score2)
+          else
+            score_acc
+          end
+        end)
+      end)
+
+    IO.inspect(res_p1, label: "Part 1")
+    IO.inspect(res_p2, label: "Part 2")
 
   end
 end

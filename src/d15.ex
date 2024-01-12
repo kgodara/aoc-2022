@@ -13,25 +13,15 @@ defmodule BeaconExclusion do
     # "x=2, y=18"
     # Sensor at x=2, y=18: closest beacon is at x=-2, y=15
     lines |>
-    Enum.map(fn line ->
-      Regex.scan(~r/x=-?[0-9]+, y=-?[0-9]+/, line) |>
-      Enum.map(fn [coord_str] ->
-        String.split(coord_str, ", ")
-      end) |>
-      Enum.map(fn [x_str, y_str] ->
-        x_coord = String.slice(x_str, 2..(String.length(x_str)-1)) |> String.to_integer
-        y_coord = String.slice(y_str, 2..(String.length(y_str)-1)) |> String.to_integer
+    Enum.map(& Regex.named_captures(~r/.*x=(?<s_x>-?[0-9]+), y=(?<s_y>-?[0-9]+).*x=(?<b_x>-?[0-9]+), y=(?<b_y>-?[0-9]+)/, &1)) |>
+    Enum.reduce({[], []}, fn captures, {sensors, beacons} ->
+      [s_x, s_y, b_x, b_y] =
+        [captures["s_x"], captures["s_y"], captures["b_x"], captures["b_y"]] |>
+        Enum.map(& String.to_integer(&1))
 
-        [x_coord, y_coord]
-      end)
-    end) |>
-    Enum.map(fn [[s_x, s_y], [b_x, b_y]] ->
-      {
-      %Sensor{ sensor: {s_x, s_y}, b_dist: abs(s_x - b_x) + abs(s_y - b_y)},
-      {b_x, b_y}
-      }
-    end) |>
-    Enum.reduce({[], []}, fn {s, b}, {sensors, beacons} -> {[s | sensors], [b | beacons]} end)
+        s = %Sensor{ sensor: {s_x, s_y}, b_dist: abs(s_x - b_x) + abs(s_y - b_y)}
+      { [s | sensors], [{b_x, b_y} | beacons] }
+    end)
   end
 
   def init_pivot_range(row_y, sensor) do
