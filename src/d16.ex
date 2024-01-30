@@ -192,14 +192,26 @@ defmodule Main do
       [30,26] |>
       Enum.map(&
         ValveNetwork.permute_pruned(
-          {flow_network, dists},
-          start_node_id,
-          closed,
-          0,
-          &1,
-          %{}
-        )
+        {flow_network, dists},
+        start_node_id,
+        closed,
+        0,
+        &1,
+        %{}
       )
+    )
+
+    #{res_p1, limits} =
+    #  ValveNetwork.permute_pruned(
+    #    {flow_network, dists},
+    #    start_node_id,
+    #    closed,
+    #    0,
+    #    30,
+    #    %{}
+    #  )
+
+    #limits = limits |> Enum.filter(fn {{_id,_open,time}, _score} -> time > 3 end) |> Map.new()
 
 
     # Get max scores for every subset of nodes selected
