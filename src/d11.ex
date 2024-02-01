@@ -204,14 +204,14 @@ init_freq = Map.keys(monkey_lookup) |> Enum.reduce(%{}, &Map.put(&2, &1, 0))
 
 # Part 1 - 20 rounds
 {_, freq} =
-  Enum.reduce(1..20, {monkey_lookup, init_freq}, fn x, {m, f} ->
+  Enum.reduce(1..20, {monkey_lookup, init_freq}, fn _x, {m, f} ->
     KeepAway.exec_round_p1(m, 0, f)
   end)
 
 m_lookup_nonscalar = KeepAway.items_to_mod_list(monkey_lookup)
 
 {_, freq2} =
-  Enum.reduce(1..10_000, {m_lookup_nonscalar, init_freq}, fn x, {m, f} ->
+  Enum.reduce(1..10_000, {m_lookup_nonscalar, init_freq}, fn _x, {m, f} ->
     KeepAway.exec_round_p2(m, 0, f)
   end)
 

@@ -1,4 +1,4 @@
-defmodule Node do
+defmodule CNode do
   defstruct [:id, :x, :y]
 end
 
@@ -30,10 +30,8 @@ defmodule Cave do
 
             is_horizontal = x1 == x2
 
-            points = abs((x1 - x2) + (y1 - y2))
-
             # Create node for every point on path segment
-            segment_coords = Enum.reduce((if is_horizontal, do: y1..y2, else: x1..x2), [], fn point_idx, coord_list ->
+            Enum.reduce((if is_horizontal, do: y1..y2, else: x1..x2), [], fn point_idx, coord_list ->
               [x_coord, y_coord] = if is_horizontal, do: [x1, point_idx], else: [point_idx, y1]
               coord_list ++ [ {x_coord, y_coord} ]
             end)
@@ -54,7 +52,7 @@ defmodule Cave do
     {coord_id_lookup, id_node_lookup}
   end
 
-  def get_next_impacted_node_id(coord_id_lookup, x, upper_bound, lowest_node_height) when upper_bound > lowest_node_height do
+  def get_next_impacted_node_id(_, _, upper_bound, lowest_node_height) when upper_bound > lowest_node_height do
     :abyss
   end
 
@@ -111,7 +109,7 @@ defmodule Cave do
     {new_x, new_y} = coords
 
     coord_id_lookup = Map.put_new(coord_id_lookup, {new_x, new_y}, new_id)
-    id_node_lookup = Map.put(id_node_lookup, new_id, %Node{id: new_id, x: new_x, y: new_y})
+    id_node_lookup = Map.put(id_node_lookup, new_id, %CNode{id: new_id, x: new_x, y: new_y})
 
     {coord_id_lookup, id_node_lookup}
   end
@@ -140,10 +138,7 @@ defmodule Cave do
       :abyss -> num_iter
       dropped_sand when dropped_sand.x == 500 and dropped_sand.y == 0 -> num_iter + 1
       dropped_sand ->
-        new_id = map_size(coord_id_lookup)
         {coord_id_lookup, id_node_lookup} = Cave.add_node(coord_id_lookup, id_node_lookup, {dropped_sand.x, dropped_sand.y})
-        #IO.inspect(Map.get(id_node_lookup, new_id), label: "Sand Dropped")
-        #IO.write("\n")
         Cave.drop_until_abyss(coord_id_lookup, id_node_lookup, x, upper_bound, lowest_node_height, num_iter+1)
     end
   end
@@ -213,9 +208,9 @@ defmodule Main do
       Enum.max_by(fn {_id, node} -> node.y end) |>
       elem(1)).y
 
-    IO.inspect(map_size(coord_id_lookup), label: "coord_id pairs")
+    #IO.inspect(map_size(coord_id_lookup), label: "coord_id pairs")
 
-    IO.inspect(Cave.drop_until_abyss(coord_id_lookup, id_node_lookup, 500, 0, lowest_node_height, 0), label: "Part 1: ")
+    IO.inspect(Cave.drop_until_abyss(coord_id_lookup, id_node_lookup, 500, 0, lowest_node_height, 0), label: "Part 1")
 
 
     {coord_id_lookup, id_node_lookup} = Cave.add_floor_nodes(coord_id_lookup, id_node_lookup, lowest_node_height)
@@ -223,7 +218,7 @@ defmodule Main do
       Enum.max_by(fn {_id, node} -> node.y end) |>
       elem(1)).y
 
-    IO.inspect(Cave.drop_until_abyss(coord_id_lookup, id_node_lookup, 500, 0, lowest_node_height, 0), label: "Part 2: ")
+    IO.inspect(Cave.drop_until_abyss(coord_id_lookup, id_node_lookup, 500, 0, lowest_node_height, 0), label: "Part 2")
   end
 end
 
