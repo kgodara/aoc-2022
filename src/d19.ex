@@ -12,17 +12,18 @@ end
 defmodule Amounts do
   defstruct [:ore, :clay, :obsidian, :geode]
 
-  def advance(%Amounts{} = amts, %Rates{} = rates) do
+  def advance(amts, rates, iter \\ 1)
+
+  def advance(%Amounts{} = amts, %Rates{} = rates, iter) do
     %Amounts{
-      ore: amts.ore + rates.ore,
-      clay: amts.clay + rates.clay,
-      obsidian: amts.obsidian + rates.obsidian,
-      geode: amts.geode + rates.geode,
+      ore: amts.ore + (rates.ore * iter),
+      clay: amts.clay + (rates.clay * iter),
+      obsidian: amts.obsidian + (rates.obsidian * iter),
+      geode: amts.geode + (rates.geode * iter),
     }
   end
 
   def new_bot(%Amounts{} = amts, %Rates{} = rates, bp, bot) do
-    Map.replace!(amts, bot, Map.get(amts,bot) - Map.get(rates,bot))
     case bot do
       :ore ->
         %Amounts{
@@ -64,7 +65,6 @@ defmodule Mining do
       [id, o_ore, c_ore, ob_ore, ob_clay, g_ore, g_ob] =
         [r["id"], r["ore"], r["clay"], r["oore"], r["oclay"], r["gore"], r["gobsidian"]] |>
         Enum.map(& String.to_integer/1)
-      IO.inspect([id, o_ore, c_ore, ob_ore, ob_clay, g_ore, g_ob], label: "parsed")
 
       %Blueprint{
         id:       id,
@@ -82,125 +82,171 @@ defmodule Mining do
     { Amounts.new_bot(amts, rates, bp, bot), Rates.new_bot(rates, bot) }
   end
 
-  def attempt_spawn({{%Amounts{} = amts, %Amounts{} = n_amts}, %Rates{} = rates}, bp, bot) do
-
-    can_spawn? =
-      case bot do
-        :ore -> amts.ore >= bp.o_ore
-        :clay -> amts.ore >= bp.c_ore
-        :obsidian -> amts.ore >= bp.ob_ore and amts.clay >= bp.ob_clay
-        :geode -> amts.ore >= bp.g_ore and amts.obsidian >= bp.g_ob
-      end
-
-      if can_spawn? == true, do: Mining.new_bot({n_amts, rates}, bp, bot), else: nil
+  def can_spawn?({%Amounts{} = amts, %Rates{} = rates}, bp, bot) do
+    case bot do
+      :ore -> amts.ore >= bp.o_ore
+      :clay -> amts.ore >= bp.c_ore
+      :obsidian -> amts.ore >= bp.ob_ore and amts.clay >= bp.ob_clay
+      :geode -> amts.ore >= bp.g_ore and amts.obsidian >= bp.g_ob
+    end
   end
 
-  def max_possible_geodes(rem_time, amts, rates) do
-    # Optimal geodes from rem_time is:
-    {_,_,future_geodes} =
-      Enum.reduce(rem_time..1//-1, {false, 0, amts.geode}, fn _rem, {incr_rate?, num_bots, geodes} ->
-        num_bots = (if incr_rate? == true, do: num_bots+1, else: num_bots)
-        {
-          true,
-          num_bots,
-          geodes + rates.geode + num_bots
-        }
-      end)
+  def attempt_skipping_spawn(bp, amts, rates, rem_time, spawn_target) do
 
-    # TODO: this upper bound is very high, can bring down by incorporating other downstream resources
-    future_geodes
+    #IO.inspect({spawn_target, rem_time, rates}, label: "skipping_spawn()")
+
+    # could we ever spawn this bot?
+    possible? = case spawn_target do
+      :ore -> rates.ore > 0
+      :clay -> rates.ore > 0
+      :obsidian -> rates.ore > 0 and rates.clay > 0
+      :geode -> rates.ore > 0 and rates.obsidian > 0
+    end
+
+    if possible? == true do
+      # Assumption: one of the constituents must be less than its blueprint requirement
+      # in order for the bot to be unspawnable.
+      # So, we shouldn't have to worry about final results being negative.
+      ticks_needed = case spawn_target do
+        :ore -> ceil((bp.o_ore - amts.ore) / rates.ore)
+        :clay -> ceil((bp.c_ore - amts.ore) / rates.ore)
+        :obsidian -> max(
+          ceil((bp.ob_ore - amts.ore) / rates.ore),
+          ceil((bp.ob_clay - amts.clay) / rates.clay)
+        )
+        :geode -> max(
+          ceil((bp.g_ore - amts.ore) / rates.ore),
+          ceil((bp.g_ob - amts.obsidian) / rates.obsidian)
+        )
+      end
+
+      # include tick for spawning the bot
+      ticks_needed = ticks_needed + 1
+
+      # TODO: just for debugging allow spawning on last tick
+      # problem with optimizing is that valid paths are cut out
+      # can just use advance(a,r,$x) if (rem_time - ticks_needed) <= 0
+      #   (newly created bot will have 0 impact) / won't be spawned
+
+      if (rem_time - ticks_needed) > 0 do
+        n_amts = Amounts.advance(amts, rates, ticks_needed)
+        {n_amts, n_rates} = Mining.new_bot({n_amts, rates}, bp, spawn_target)
+        {n_amts, n_rates, rem_time - ticks_needed}
+      else
+        {Amounts.advance(amts, rates, rem_time), rates, 0}
+      end
+    else
+      nil
+    end
   end
 
   def simulate(bp, amts, rates, rem_time, max_seen \\ 0)
 
-  def simulate(_bp, amts, _rates, 0, _max_seen) do
-    if amts.ore == 4 and amts.clay == 25 and amts.obsidian == 7 and amts.geode == 2 do
-      IO.inspect(amts, label: "FINAL Amounts")
-      IO.inspect(_rates, label: "FINAL Rates")
-      IO.puts("\n")
-    end
-    amts.geode
-  end
+  def simulate(bp, amts, rates, rem_time, _max_seen) when rem_time < 3 do
+    spawnable? = Mining.can_spawn?({amts, rates}, bp, :geode) && rem_time == 2
 
+    n_amts = Amounts.advance(amts, rates, rem_time)
+    geode_res = (if spawnable? == true, do: n_amts.geode + 1, else: n_amts.geode)
+    geode_res
+  end
 
   def simulate(bp, amts, rates, rem_time, max_seen) do
 
     n_amts = Amounts.advance(amts, rates)
 
+    geode_upper_bound = amts.geode + (rates.geode * rem_time) + Enum.sum(1..(rem_time-1))
 
-    #IO.inspect(rem_time, label: "rem")
-    #IO.inspect(amts, label: "ITER amts: ")
-    #IO.inspect(rates, label: "ITER rates")
+    # NOTE: could tighten this upper bound by using the ore/obsidian constraint
+    # e.g. instead of '+ Enum.sum(1..(rem_time-1))'
+    # init: num_makeable_geode_robots
+    # init: ore_upper_bound, ob_upper_bound
+    # init: num_ore_cost,
 
-    #IO.inspect("")
+    # what if we init:
+    #   ore_upper_bound
+    #   clay_upper_bound (limited by ore_upper_bound / bp clay bot cost)
+    #   ob_upper_bound (limited by clay_upper_bound / ore_upper_bound / costs)
+    #
 
-    geode_upper_bound = Mining.max_possible_geodes(rem_time, amts, rates)
+    # NOTE: ore_upper_bound can be constrained 2 more than geodes since, geode bot can be made until
+    # geode upper bound includes increasing production including tick=1
+    # but ore bot prod can happen tick = 3 at the latest (so a geode bot can be made tick = 2)
+
+    # Ex: rem_time = 7
+    # amts.geode = 4, rates.geode = 2
+    # geode: 4 + (2 * 7) + sum(1..6) --> 39
+    #
+    # amts.ore = 4, rates.ore = 2
+    # ore: 4 + (2 * 7) + sum()
+    #
+    # geode bot made at rem_time=7 --> 6 ticks of impact
+    # ore bot made at rem_time=7   --> 4 ticks of impact (tick=1 only geode rate matters) + (tick=2 ore needs to be enough to make a geode bot)
+    # So, for ore: Enum.sum(1..(rem_time-3))
+
+    # rem_time = 3
+    # sum = 0 --> ore bot made on tick = 3 / produce on tick=2 / AFTER check for geode prod occurs --> WORTHLESS
+
+    # rem_time = 4
+    # sum = 1 --> ore bot made on tick=4 / produce on tick=3 / geode bot may be enabled on tick=2
+
+    #max_ore_seq = Enum.reduce(rem_time..1, 0, fn i,acc ->
+    #
+    #end)
+
+
+
+    #ore_upper_bound = amts.ore + (rates.ore * rem_time) + Enum.sum(0..(rem_time-3))
+
+    # NOTE: CLAY bot can't even be made on tick=4, since obsidian would have to be made on tick=3, but new obsidian
+    # couldn't produce before geode check on tick=2
+
+    # TODO: how to bind clay_upper_bound by ore_upper_bound?
+    #clay_upper_bound = amts.clay + (rates.clay * rem_time) + Enum.sum(0..(rem_time-4)//1)
+
+    # bind the ramping obsidian increase to make sure that bots aren't produced in excess of clay/ore limits
+
+    #obsidian_max_bots = min( div(ore_upper_bound, bp.ob_ore), div(clay_upper_bound, bp.ob_clay) )
+
+
+    #obsidian_clay_max_bots = min(obsidian_max_bots, )
+
+    #obsidian_ramping = Enum.sum(0..(rem_time-3))
+
+    #obsidian_upper_bound = amts.obsidian + (rates.obsidian * rem_time)
+
+    #geode_upper_bound =
+
+
 
     if geode_upper_bound > max_seen do
-      filtered =
+
+      # Impl thought:
+      # Make method to incr rem_time by however long until given bot can be spawned,
+      # including processing the actual spawning tick
+      # return nil if impossible to spawn (resource has rate=0 OR will spawn on last tick OR run out of time)
+      # return new amts/rates/rem_time if spawn is doable
+
         @robots |>
-        Enum.map(fn bot ->
-          Mining.attempt_spawn({{amts, n_amts}, rates}, bp, bot)
-        end) |>
-        Enum.filter(& not is_nil(&1))
+          Enum.reduce(max_seen, fn bot, max_acc ->
+            spawnable? = Mining.can_spawn?({amts, rates}, bp, bot)# && not(bot == :clay && rem_time == 3)
+            # NOTE: there is never a point in making a clay bot with rem_time = 3,
+            # not enough time for the clay rate to impact geode production
 
-      # TODO: Could remove this if every bot can be spawned --> never want to wait
-      # add case where we waiting for another bot to be spawnable
+            sim_res =
+              if spawnable? == true do
+                {amts, rates} = Mining.new_bot({n_amts, rates}, bp, bot)
+                Mining.simulate(bp, amts, rates, rem_time-1, max_acc)
+              else
+                case Mining.attempt_skipping_spawn(bp, amts, rates, rem_time, bot) do
+                  {amts, rates, rem_time} -> Mining.simulate(bp, amts, rates, rem_time, max_acc)
+                  nil -> -1
+                end
+              end
 
-      # TODO: Could indicate to further bots which bots need to be spawned next
-      # e.g. if ore can already be spawned now, it's never worth it to:
-      #   1. not spawn it now
-      #   2. wait
-      #   3. spawn later
-      filtered =
-        if length(filtered) == length(@robots) do
-          filtered
-        else
-          [{n_amts, rates}] ++ filtered
-        end
-
-      #IO.inspect(filtered, label: "FILTERED")
-      #IO.puts("\n")
-
-      filtered |>
-      Enum.reduce(max_seen, fn {amts, rates}, max_acc ->
-        max(max_acc, Mining.simulate(bp, amts, rates, rem_time-1, max_acc))
-      end)
+              max(sim_res, max_acc)
+        end)
     else
-      # IO.puts("Skipping")
       max_seen
-    end
-  end
-
-
-
-
-
-  # geode rate can't change, incr and return result
-  def simulate2(bp, amts, rates, 1) do
-    Mining.simulate(bp, Amounts.advance(amts, rates), rates, 0)
-  end
-
-  # geode rate can only change by 1, check if we can make geode bot or not
-  def simulate2(bp, amts, rates, 2) do
-    # Can we make a geode bot
-
-    spawn_attempt = Mining.attempt_spawn({{amts, Amounts.advance(amts, rates)}, rates}, bp, :geode)
-
-    if is_nil(spawn_attempt) do
-      Mining.simulate(
-        bp,
-        Amounts.advance(amts, rates),
-        rates,
-        1
-      )
-    else
-      Mining.simulate(
-        bp,
-        elem(spawn_attempt,0),
-        elem(spawn_attempt,1),
-        1
-      )
     end
   end
 end
@@ -223,27 +269,45 @@ end
 defmodule Main do
   def main() do
 
-    lines = File.read!("../input/d19_ex.txt") |>
+    lines = File.read!("../input/d19.txt") |>
       String.trim_trailing |>
       String.split("\n")
 
-    bps = Mining.parse(lines) |> List.first()
+    bps = Mining.parse(lines)
 
-    bps = [bps]
 
-    bps |>
+    _y = """
+    p1_res = bps |>
+    Enum.map(fn bp ->
+      res = Mining.simulate(bp,
+        %Amounts{ore: 0, clay: 0, obsidian: 0, geode: 0},
+        %Rates{ore: 1, clay: 0, obsidian: 0, geode: 0},
+        28
+      )
+      IO.inspect({bp.id, res}, label: "bp")
+      res * bp.id
+    end) |>
+    Enum.reduce(0, & &1 + &2)
+    """
+
+
+    p2_res = bps |>
+    Enum.take(3) |>
     Enum.map(fn bp ->
       res = Mining.simulate(bp,
         %Amounts{ore: 0, clay: 0, obsidian: 0, geode: 0},
         %Rates{ore: 1, clay: 0, obsidian: 0, geode: 0},
         24
       )
-      IO.inspect(res, label: "max geodes")
-      res
-    end)
+      IO.inspect({bp.id, res}, label: "bp")
+      res * bp.id
+    end) |>
+    Enum.reduce(0, & &1 + &2)
 
 
-    IO.inspect(bps, label: "bps")
+    #IO.inspect(p1_res, label: "Part 1")
+    #IO.inspect(p2_res, label: "Part 2")
+
   end
 end
 
