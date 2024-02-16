@@ -142,22 +142,20 @@ defmodule Mining do
   # We calculate a tighter-than-naive geode bound by creating sequences of maximum obsidian / clay amounts
   # at each tick.
   # IMPORTANT: We don't include any of the costs of creating any bots in these sequences because that creates tradeoffs.
-
+  #
   # In other words: if the cost of creating bots is 0 (given you have the materials),
   # and you can make multiple bots per tick, what is the most ore & obsidian you can have at each tick?
-
+  #
   # This gives an absolute upper bound on ore and obsidian at each tick
-
+  #
   # Next, we can just run over the sequence of ore and obsidian at each tick,
   # and simulate spawning geode bots WITH COST, to determine the absolute upper bound of geodes we can reach
   # from our current context to the last tick of this simulation.
-
+  #
   # This creates a geode upper bound which is actually constrained by its prerequisites,
   # and is much tighter, as opposed to say an upper bound based on if we could spawn a
   # geode bot from every tick from now until the last tick.
-
-
-  # Note: this gave a 100x speed-up over a more naive geode bound impl.
+  # Note: this gave a 100x speed-up over a more naive geode bound impl (~100 sec -> ~1 sec).
   def calc_geode_upper_bound(%Amounts{} = amts, %Rates{} = rates, bp, rem_time) do
     {_, _, ore_max_seq, obsidian_max_seq} =
       # include amt vals before current tick processed since geode bot spawning will need
@@ -216,7 +214,7 @@ defmodule Mining do
 
   def simulate(bp, amts, rates, rem_time, max_seen \\ 0)
 
-  # when rem_time < 3, the only possibility is that one more geode bot can be made
+  # when rem_time < 3, the only variability is if one more geode bot can be made
   # before the last tick.
   def simulate(bp, amts, rates, rem_time, _max_seen) when rem_time < 3 do
     spawnable? = Mining.can_spawn?(amts, bp, :geode) && rem_time == 2

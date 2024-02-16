@@ -32,13 +32,14 @@ defmodule Lava do
 
     cubes |>
     Enum.reduce(side_freqs, fn [x,y,z],map ->
-      map |>
-      Map.update([x-1,y,z], 1, & &1 + 1) |>
-      Map.update([x+1,y,z], 1, & &1 + 1) |>
-      Map.update([x,y-1,z], 1, & &1 + 1) |>
-      Map.update([x,y+1,z], 1, & &1 + 1) |>
-      Map.update([x,y,z-1], 1, & &1 + 1) |>
-      Map.update([x,y,z+1], 1, & &1 + 1)
+      Enum.reduce([
+        [x-1,y,z],
+        [x+1,y,z],
+        [x,y-1,z],
+        [x,y+1,z],
+        [x,y,z-1],
+        [x,y,z+1]
+      ], map, fn k,m -> Map.update(m, k, 1, & &1 + 1) end)
     end)
   end
 
