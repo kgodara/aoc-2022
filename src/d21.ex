@@ -12,25 +12,11 @@ defmodule MonkeyOp do
         if is_nil(l) or is_nil(r) do
           nil
         else
-          case monkey_op.type do
-            :add ->
-              l + r
-            :sub ->
-              l - r
-            :mul ->
-              l * r
-            :div ->
-              # NOTE: Assuming integer divisions for everything
-              if rem(l, r) != 0 do
-                raise "Division will truncate!"
-              end
-              div(l, r)
-          end
+          monkey_op.type.(l,r)
         end
     end
   end
 end
-
 
 defmodule Monkey do
   def parse(input) do
@@ -50,10 +36,10 @@ defmodule Monkey do
             [label, l, op, r] = parts
 
             op = case op do
-              "+" -> :add
-              "-" -> :sub
-              "*" -> :mul
-              "/" -> :div
+              "+" -> & Kernel.+/2
+              "-" -> & Kernel.-/2
+              "*" -> & Kernel.*/2
+              "/" -> & Kernel.div/2
             end
 
             %MonkeyOp{ label: label |> String.trim_trailing(":"), type: op, l_label: l, r_label: r, res: nil}
@@ -61,42 +47,15 @@ defmodule Monkey do
         end
       end)
   end
-  def exec(monkeys_ordered, monkeys_resolved \\ %{})
 
-  def exec([], monkeys_resolved) do
-    monkeys_resolved |> Map.get("root")
+  def exec(unresolved, resolved \\ %{}, unresolvable \\ MapSet.new)
+
+  # Part 1 will successfully resolve root
+  def exec([], resolved, _) do
+    resolved |> Map.get("root")
   end
 
-  def exec(unresolved_monkeys, monkeys_resolved) do
-
-    # Use a BFS type approach, scan remaining unsolved monkeys each iter
-
-    # add all with not is_nil(m.res) to monkeys_resolved
-    # + to 'newly_resolved map'
-    # for every m in unresolved, update res based on resolved
-    {still_unresolved, now_resolved} =
-      unresolved_monkeys |>
-      Enum.split_with(& is_nil(&1.res))
-
-    monkeys_resolved =
-      now_resolved |>
-      Enum.reduce(monkeys_resolved, fn m, acc -> Map.put(acc, m.label, m.res) end)
-
-    # for every m in unresolved, update res based on resolved
-    still_unresolved =
-      still_unresolved |>
-      Enum.map(fn m ->
-        case MonkeyOp.resolve(m, monkeys_resolved) do
-          nil ->  m
-          v -> %MonkeyOp{m | res: v}
-        end
-      end)
-
-    Monkey.exec(still_unresolved, monkeys_resolved)
-  end
-
-
-  def exec2(unresolved, resolved, unresolvable) do
+  def exec(unresolved, resolved, unresolvable) do
 
     start_unresolved = unresolved |> length
 
@@ -104,13 +63,12 @@ defmodule Monkey do
 
     # Use a BFS type approach, scan remaining unsolved monkeys each iter
 
-    # add all with not is_nil(m.res) to monkeys_resolved
-    # + to 'newly_resolved map'
-    # for every m in unresolved, update res based on resolved
+    # Remove resolved nodes from unresolved
     {unresolved, resolved_list} =
       unresolved |>
       Enum.split_with(& is_nil(&1.res))
 
+    # Remove unresolvable nodes from unresolved
     {unresolved, unresolvable_list} =
       unresolved |>
       Enum.split_with(fn m ->
@@ -121,6 +79,8 @@ defmodule Monkey do
         end
       end)
 
+    # Update unresolvable and resolved based on above
+
     unresolvable = merge_mapset_list.(unresolvable, unresolvable_list)
 
     resolved =
@@ -128,7 +88,7 @@ defmodule Monkey do
       Enum.reduce(resolved, fn m, acc -> Map.put(acc, m.label, m.res) end)
 
 
-    # for every m in unresolved, update res based on resolved
+    # Attempt to update unresolved and add 'res' values
     unresolved =
       unresolved |>
       Enum.map(fn m ->
@@ -138,8 +98,9 @@ defmodule Monkey do
         end
       end)
 
+    # Part 2 will be unable to resolve all nodes
     if start_unresolved != length(unresolved) do
-      Monkey.exec2(unresolved, resolved, unresolvable)
+      Monkey.exec(unresolved, resolved, unresolvable)
     else
       resolved
     end
@@ -159,65 +120,41 @@ defmodule Monkey do
     l_val = Map.get(resolved, cur_op.l_label)
     r_val = Map.get(resolved, cur_op.r_label)
 
+    fn_name =
+      :erlang.fun_info(cur_op.type) |>
+      Enum.find(& elem(&1,0) == :name) |>
+      elem(1)
+
     # Resolve what the missing val needs to be
     {n_l_val, n_r_val} = case {l_val, r_val} do
       {l_val, nil} when not is_nil(l_val) ->
-        case cur_op.type do
-          :add -> {l_val, target_val - l_val}
-          :sub -> {l_val, l_val - target_val}
-          :mul ->
-            # 3 * 8 = 24
-            # l_val = 3, target_val = 24
-            # target_val / l_val
-            if rem(target_val, l_val) != 0 do
-              raise "Division will truncate!"
-            end
-            {l_val, div(target_val, l_val)}
-          :div ->
-            # 24 / 3 = 8
-            # l_val = 24, target_val = 8
-            # l_val / target_val
-            if rem(l_val, target_val) != 0 do
-              raise "Division will truncate!"
-            end
-            {l_val, div(l_val, target_val)}
+        case fn_name do
+          :+ -> {l_val, target_val - l_val}
+          :- -> {l_val, l_val - target_val}
+          :* -> {l_val, div(target_val, l_val)}
+          :div -> {l_val, div(l_val, target_val)}
           end
       {nil, r_val} when not is_nil(r_val) ->
-        case cur_op.type do
-          :add ->
-            {target_val - r_val, r_val}
-          :sub ->
-            {target_val + r_val, r_val}
-          :mul ->
-            # 3 * 8 = 24
-            # r_val = 8, target_val = 24
-            # target_val / r_val
-            if rem(target_val, r_val) != 0 do
-              raise "Division will truncate!"
-            end
-            {div(target_val, r_val), r_val}
-          :div ->
-            # 24 / 3 = 8
-            # r_val = 3, target_val = 8
-            # r_val * target_val
-            {r_val * target_val, r_val}
+        case fn_name do
+          :+ -> {target_val - r_val, r_val}
+          :- -> {target_val + r_val, r_val}
+          :* -> {div(target_val, r_val), r_val}
+          :div -> {r_val * target_val, r_val}
           end
       {nil, nil} -> raise "Both children are undefined"
     end
 
-    case {l_val, r_val} do
-      {nil, _} ->
-        resolved = resolved |>
-          Map.put(cur_op.l_label, n_l_val)
+    resolved =
+      resolved |>
+      Map.put(cur_op.l_label, n_l_val) |>
+      Map.put(cur_op.r_label, n_r_val)
 
-        Monkey.resolve_from_root(Map.get(ops, cur_op.l_label), {ops, resolved}, n_l_val)
-
-        {_, nil} ->
-          resolved = resolved |>
-            Map.put(cur_op.r_label, n_r_val)
-
-        Monkey.resolve_from_root(Map.get(ops, cur_op.r_label), {ops, resolved}, n_r_val)
+    {n_op, n_target_val} = case {l_val, r_val} do
+      {nil, _} -> { Map.get(ops, cur_op.l_label), n_l_val}
+      {_, nil} -> { Map.get(ops, cur_op.r_label), n_r_val}
     end
+
+    Monkey.resolve_from_root(n_op, {ops, resolved}, n_target_val)
   end
 end
 
@@ -234,7 +171,7 @@ defmodule Main do
       ops |>
       Enum.filter(& &1.label != "humn")
 
-    resolved = Monkey.exec2(ops_filtered, %{}, MapSet.new(["humn"]))
+    resolved = Monkey.exec(ops_filtered, %{}, MapSet.new(["humn"]))
 
     root = ops |> Enum.find(& &1.label == "root")
 
@@ -242,6 +179,7 @@ defmodule Main do
       Enum.map(& {&1.label, &1}) |>
       Map.new
 
+    # get starting point for top-down resolving
     {start_label, target_val} =
       case {Map.get(resolved, root.l_label), Map.get(resolved, root.r_label)} do
         {nil, r} -> {root.l_label, r}
