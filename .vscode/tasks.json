@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "mix",
+			"task": "Format",
+			"problemMatcher": [],
+			"label": "mix: Format",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		}
+	]
+}
