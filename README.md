@@ -8,7 +8,7 @@ mix deps.get
 # Run example for given day
 mix solve -d 14 --ex
 
-# Run give day with time output
+# Run given day with time output
 mix solve -d 25 --time
 
 # Run all days
